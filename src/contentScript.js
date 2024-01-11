@@ -11,54 +11,94 @@ const browserSize = {
 };
 
 var colorExtension = {
-  buttonId: 'extension-capture-button',
+  divId: 'extension-capture-div',
+  button1Id: 'extension-capture-button',
+  button2Id: 'extension-capture-button2',
   btnEl: () => {
     document.body.style.position = 'relative';
+    const div = document.createElement('div');
+    div.id = colorExtension.divId;
+    div.setAttribute(
+      'style',
+      'display:block; margin-top:10px;text-align:center;position:sticky;bottom:20px;left:100%;transform:translateX(-10%);z-index:99999;max-width:10%;'
+    );
+
     const button = document.createElement('button');
-    button.id = colorExtension.buttonId;
-    button.innerText = 'Capture page';
+    button.id = colorExtension.button1Id;
+    button.innerText = 'Change elements';
     button.setAttribute(
       'style',
-      'padding:14px 25px; color:white; background: #242424; display:block; margin-top:10px;text-align:center;position:sticky;bottom:20px;left:100%;transform:translateX(-10%);z-index:99999;max-width:10%;'
+      'padding:14px 25px; color:white; background: #242424;margin-bottom: 10px; '
     );
-    return button;
+    const button2 = document.createElement('button');
+    button2.id = colorExtension.button2Id;
+    button2.innerText = 'Take screenshots';
+    button2.setAttribute(
+      'style',
+      'padding:14px 25px; color:white; background: #242424;'
+    );
+
+    div.appendChild(button);
+    div.appendChild(button2);
+
+    return div;
   },
   initExtensionBtn: () => {
-    const button = colorExtension.btnEl();
-    document.body.appendChild(button);
-    button.addEventListener('click', () => {
-      // init screenshot image data
-      screenShotImageData = [];
-      // apply filter
-      colorExtension.applyFiltersAndChangeMedia();
-      // replace text
-      colorExtension.replaceTexts();
-      // start taking screenshots
-      colorExtension.takeScreenshots();
-    });
+    const div = colorExtension.btnEl();
+    document.body.appendChild(div);
+    document
+      .getElementById(colorExtension.button1Id)
+      .addEventListener('click', () => {
+        // apply filter
+        colorExtension.applyFiltersAndChangeMedia();
+        // replace text
+        colorExtension.replaceTexts();
+        // colorExtension.changeText(document.body.querySelectorAll('*'));
+        // replace bg images
+        colorExtension.replaceBgImages();
+        // replace buttons
+        colorExtension.replaceButtons();
+      });
+    document
+      .getElementById(colorExtension.button2Id)
+      .addEventListener('click', () => {
+        // init screenshot image data
+        screenShotImageData = [];
+        // start taking screenshots
+        colorExtension.takeScreenshots();
+      });
   },
 
   takeScreenshots: () => {
-    window.scrollTo(0, 0);
-    document.getElementById(colorExtension.buttonId).style.visibility =
-      'hidden';
-    for (let index = 0; index <= browserSize.verticalSections; index++) {
+    let p = new Promise((resolve, reject) => {
+      window.scrollTo(0, 0);
+      document.getElementById(colorExtension.divId).style.visibility = 'hidden';
+      resolve();
+    });
+    p.then((e) => {
+      for (let index = 0; index <= browserSize.verticalSections; index++) {
+        setTimeout(() => {
+          window.scrollTo(0, index * window.innerHeight);
+          chrome.runtime.sendMessage(
+            { type: 'TAKE_SCREENSHOT' },
+            (response) => {
+              // console.log(response);
+              screenShotImageData.push(response.img);
+            }
+          );
+        }, 550 * (index + 1));
+      }
+    }).then((e) => {
       setTimeout(() => {
-        window.scrollTo(0, index * window.innerHeight);
-        chrome.runtime.sendMessage({ type: 'TAKE_SCREENSHOT' }, (response) => {
-          console.log(response);
-          screenShotImageData.push(response.img);
-        });
-      }, 550 * (index + 1));
-    }
-
-    setTimeout(() => {
-      // filter unique blobs
-      // screenShotImageData = [...new Set(screenShotImageData)];
-      document.getElementById(colorExtension.buttonId).style.visibility =
-        'visible';
-      colorExtension.downloadZip();
-    }, (browserSize.verticalSections + 1) * 550 + 1000);
+        // filter unique blobs
+        screenShotImageData = screenShotImageData.filter((e) => e);
+        // screenShotImageData = [...new Set(screenShotImageData)];
+        console.log(screenShotImageData.length, browserSize.verticalSections);
+        document.getElementById(colorExtension.divId).style.visibility =
+          'visible';
+        colorExtension.downloadZip();
+      }, (browserSize.verticalSections + 1) * 550 + 1000);
+    });
   },
 
   downloadZip: () => {
@@ -67,7 +107,7 @@ var colorExtension = {
 
     for (let index = 0; index < screenShotImageData.length; index++) {
       imgZip.file(
-        `img${index}.png`,
+        `img${index + 1}.png`,
         colorExtension.b64toBlob(screenShotImageData[index]),
         {
           base64: true,
@@ -120,11 +160,13 @@ var colorExtension = {
     // replace images
     let images = document.getElementsByTagName('img');
     for (var i = 0; i < images.length; i++) {
-      console.log(images[i].clientHeight, images[i].clientWidth);
+      // console.log(images[i].clientHeight, images[i].clientWidth);
       images[
         i
       ].src = `https://placehold.co/${images[i].clientWidth}x${images[i].clientHeight}`;
       images[i].srcset = '';
+      images[i].loading = 'eager';
+      images[i].removeAttribute('decoding');
     }
 
     // replace videos
@@ -140,39 +182,189 @@ var colorExtension = {
   },
 
   replaceTexts: () => {
-    let tags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'label', 'span'];
+    // a,div element texts
+    let tags2 = ['a'];
+    let elements2 = [];
+    tags2.forEach((tag) => elements2.push(...document.querySelectorAll(tag)));
+
+    for (let index = 0; index < elements2.length; index++) {
+      if (elements2[index].hasChildNodes()) {
+        let children = Array.from(elements2[index].childNodes);
+        children.forEach((e) => {
+          // console.log(e, e.nodeType, e.nodeValue);
+          if (
+            e.nodeType == 3 &&
+            e.nodeValue != undefined &&
+            e.nodeValue.length > 0
+          ) {
+            // console.log(e.nodeValue.trim());
+            e.nodeValue = colorExtension.replaceWithJibrish(e.nodeValue.trim());
+          }
+        });
+      }
+    }
+
+    let tags = [
+      'p',
+      'h1',
+      'h2',
+      'h3',
+      'h4',
+      'h5',
+      'h6',
+      'label',
+      'span',
+      'td',
+      'pre',
+    ];
     let elements = [];
 
-    tags.forEach((tag) => elements.push(...document.getElementsByTagName(tag)));
+    tags.forEach((tag) => elements.push(...document.querySelectorAll(tag)));
 
     for (let index = 0; index < elements.length; index++) {
-      elements[index].innerText = colorExtension.replaceWithJibrish(
-        elements[index].innerText
-      );
+      if (elements[index].innerText.length > 0) {
+        elements[index].innerText = colorExtension.replaceWithJibrish(
+          elements[index].innerText
+        );
+      }
     }
   },
 
-  replaceWithJibrish: (shape) => {
-    const loremIpsum = `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean convallis eros porta commodo imperdiet. Integer ornare, diam gravida elementum aliquam, odio massa luctus augue, et egestas libero quam vitae justo. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Nam et hendrerit nisl. Vivamus nec felis at magna lacinia consequat. Maecenas ut felis accumsan, rhoncus dolor nec, ullamcorper lorem. Aenean placerat, lacus et placerat aliquam, risus ipsum luctus nulla, a viverra nisl eros nec enim. Donec vitae libero est. Vivamus turpis tellus, commodo eu rhoncus id, imperdiet ut dui. Curabitur tincidunt diam ut erat sodales, quis sodales quam molestie. Nam non purus nisi. Nullam in ullamcorper ex. Vestibulum rhoncus non orci ac euismod. Duis at imperdiet ante. Mauris sed diam in metus semper posuere.
-    Quisque ut neque dignissim, venenatis leo vel, interdum felis. Maecenas vehicula sagittis leo, vel commodo turpis lobortis vulputate. Interdum et malesuada fames ac ante ipsum primis in faucibus. Etiam a felis maximus, laoreet dolor eu, lacinia est. Suspendisse gravida lorem neque, ut efficitur eros euismod a. Suspendisse sit amet risus eget augue viverra tempus et vel metus. Aenean turpis tellus, cursus at elit ac, dictum accumsan ipsum. Integer porttitor tempor tellus, vel tincidunt massa. Sed feugiat, metus et cursus tincidunt, justo sapien dignissim risus, quis vulputate nisl tortor sit amet enim. Curabitur viverra sapien neque, a sodales purus lacinia ut. Vestibulum est turpis, blandit eu leo eu, facilisis condimentum tellus. Donec rhoncus rutrum vulputate.
-    Cras hendrerit est non finibus placerat. Praesent iaculis auctor tellus, nec suscipit ligula placerat viverra. Curabitur maximus, massa et consequat ullamcorper, diam sem gravida diam, at scelerisque ex sapien nec mauris. Suspendisse sed ligula arcu. Quisque mattis eros a finibus finibus. Duis scelerisque lobortis est, ullamcorper varius arcu consequat et. Cras rhoncus ultrices fringilla. Aliquam a vestibulum sapien. Suspendisse sit amet tristique felis, eget molestie erat. Suspendisse bibendum arcu vestibulum vehicula gravida. Pellentesque a lacus in eros commodo luctus et ac risus. Quisque varius massa diam, quis congue odio sollicitudin eget.
-    Aliquam consectetur sapien et enim dignissim, non dictum lectus elementum. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nunc eu sodales lacus. Sed quis sodales metus, quis viverra metus. Vestibulum metus nunc, tempor sed pellentesque eget, fermentum at dolor. Fusce non cursus lectus. Mauris tincidunt fringilla felis non pretium. Sed semper vestibulum sagittis. Phasellus quis quam a metus viverra imperdiet. Ut euismod massa a vehicula consectetur. Integer vel sapien pulvinar, blandit nulla vel, efficitur sapien. Mauris feugiat purus mi, sit amet egestas tellus molestie eget. Proin ligula diam, mollis non ante in, hendrerit rhoncus enim. Aliquam quis ultricies metus. Curabitur quis nunc purus. Sed et mattis massa.
-    Praesent luctus ornare metus, ac posuere erat bibendum et. Aliquam mattis turpis enim, vel suscipit diam maximus sed. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae; Aliquam tortor massa, imperdiet quis rhoncus nec, vehicula nec arcu. Aliquam a tempor elit. Aenean ut ultricies nisi, at vehicula risus. In eget erat risus. Sed hendrerit auctor purus, at sodales diam laoreet vel. Curabitur volutpat tempus sem. Vestibulum et mi dui. Morbi massa ex, tincidunt eu volutpat in, feugiat at libero. Etiam rhoncus orci sit amet tortor volutpat, ut viverra libero varius. Proin interdum sollicitudin est, id vestibulum libero auctor ac.`;
-    let jibberLetters = loremIpsum.toLowerCase().replaceAll(/[^a-z]/g, '');
+  replaceButtons: () => {
+    let tags = [
+      'button',
+      '.btn',
+      '[class*=btn]',
+      'a[role=button]',
+      'input[type=button]',
+      'input[type=submit]',
+      'input[type=reset]',
+    ];
+    let elements = [];
 
-    return Array.from(shape)
-      .map((char, index) => {
-        const charIsLetter = char.match(/[a-zA-Z]/);
-        if (charIsLetter) {
-          const wasUpper = char === char.toUpperCase();
-          const jibberLetter = jibberLetters[index % jibberLetters.length];
-          return wasUpper ? jibberLetter.toUpperCase() : jibberLetter;
-        } else {
-          return char;
+    tags.forEach((tag) => elements.push(...document.querySelectorAll(tag)));
+
+    for (let index = 0; index < elements.length; index++) {
+      if (
+        elements[index].id !== colorExtension.button1Id &&
+        elements[index].id !== colorExtension.button2Id
+      ) {
+        elements[index].innerText = 'Button';
+        // if (elements[index].hasChildNodes()) {
+        //   let children = Array.from(elements[index].childNodes);
+        //   children.forEach((e) => {
+        //     if (
+        //       e.nodeType == 3 &&
+        //       e.nodeValue != undefined &&
+        //       e.nodeValue.length > 0
+        //     ) {
+        //       e.nodeValue = 'Button';
+        //     }
+        //   });
+        // }
+      }
+    }
+  },
+
+  replaceWithJibrish: (originalText) => {
+    const loremIpsum = `Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Odio pellentesque diam volutpat commodo. Mauris cursus mattis molestie a iaculis at erat pellentesque. Potenti nullam ac tortor vitae purus faucibus ornare suspendisse sed. Nunc id cursus metus aliquam. Et malesuada fames ac turpis. Sed sed risus pretium quam vulputate dignissim suspendisse in. Leo duis ut diam quam nulla porttitor massa id neque. Etiam non quam lacus suspendisse faucibus interdum posuere. Eu consequat ac felis donec et odio pellentesque. Maecenas volutpat blandit aliquam etiam erat. At volutpat diam ut venenatis tellus in metus. Rutrum tellus pellentesque eu tincidunt tortor aliquam nulla. At volutpat diam ut venenatis tellus in metus.
+    A erat nam at lectus. Diam donec adipiscing tristique risus nec feugiat. Quam vulputate dignissim suspendisse in est ante. At elementum eu facilisis sed odio morbi quis. Non blandit massa enim nec dui nunc mattis enim. Maecenas accumsan lacus vel facilisis. Dis parturient montes nascetur ridiculus mus mauris vitae ultricies leo. Nisi lacus sed viverra tellus in hac. Egestas pretium aenean pharetra magna ac. Platea dictumst vestibulum rhoncus est pellentesque elit ullamcorper dignissim cras.
+    `;
+
+    // let jibberLetters = loremIpsum.toLowerCase().replaceAll(/[^a-z]/g, '');
+    // return Array.from(originalText)
+    //   .map((char, index) => {
+    //     const charIsLetter = char.match(/[a-zA-Z]/);
+    //     if (charIsLetter) {
+    //       const wasUpper = char === char.toUpperCase();
+    //       const jibberLetter = jibberLetters[index % jibberLetters.length];
+    //       return wasUpper ? jibberLetter.toUpperCase() : jibberLetter;
+    //     } else {
+    //       return char;
+    //     }
+    //   })
+    //   .join('');
+
+    let splitted = loremIpsum.split(' ');
+    let textLength = originalText.length;
+    let wordCount = originalText.split(' ').length;
+    let replacedText = [];
+
+    while (textLength > 0) {
+      let word = splitted.shift();
+
+      if (word == undefined) {
+        splitted = loremIpsum.split(' ');
+        word = splitted.shift();
+      }
+
+      // check for single word
+      textLength = textLength - word.length - 1;
+      replacedText.push(word);
+    }
+
+    return replacedText.join(' ');
+  },
+
+  replaceBgImages: () => {
+    const srcChecker = /url\(\s*?['"]?\s*?(\S+?)\s*?["']?\s*?\)/i;
+    return Array.from(
+      Array.from(document.querySelectorAll('*')).reduce((collection, node) => {
+        let prop = window
+          .getComputedStyle(node, null)
+          .getPropertyValue('background-image');
+        // match `url(...)`
+        let match = srcChecker.exec(prop);
+        if (match) {
+          // console.log(node);
+          // get image size
+          colorExtension.loadImg(match[1]).then((data) => {
+            node.style.backgroundImage = `url('https://placehold.co/${data.width}x${data.width}')`;
+          });
+          collection.add(match[1]);
         }
-      })
-      .join('');
+        return collection;
+      }, new Set())
+    );
+  },
+
+  changeText: (root) => {
+    return Array.from(
+      Array.from(root).reduce((collection, node) => {
+        // console.log(node, node.nodeType, node.childNodes);
+
+        if (node.nodeType != 3 && node.hasChildNodes()) {
+          return colorExtension.changeText(node.childNodes);
+        }
+
+        if (node.nodeType == 3) {
+          // console.log('3', node);
+          node = colorExtension.replaceWithJibrish(node);
+        }
+        return collection;
+      }, new Set())
+    );
+  },
+
+  loadImg: (src, timeout = 500) => {
+    var imgPromise = new Promise((resolve, reject) => {
+      let img = new Image();
+      img.onload = () => {
+        resolve({
+          src: src,
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+        });
+      };
+      img.onerror = reject;
+      img.src = src;
+    });
+    var timer = new Promise((resolve, reject) => {
+      setTimeout(reject, timeout);
+    });
+    return Promise.race([imgPromise, timer]);
   },
 };
 
 colorExtension.initExtensionBtn();
+
