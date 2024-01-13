@@ -3,24 +3,26 @@ var JSZip = require('jszip');
 
 // screenshot files
 let screenShotImageData = [];
+let scrollPosition = 0;
 
-const browserSize = {
-  height: window.innerHeight,
-  width: window.innerWidth,
-  verticalSections: Math.ceil(document.body.scrollHeight / window.innerHeight),
-};
+chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
+  if (request.message == 'TOGGLE_MENU') {
+    colorExtension.toggleBtnVisibility();
+  }
+});
 
 var colorExtension = {
   divId: 'extension-capture-div',
   button1Id: 'extension-capture-button',
   button2Id: 'extension-capture-button2',
+  button3Id: 'extension-close-button',
   btnEl: () => {
-    document.body.style.position = 'relative';
+    // document.body.style.position = 'relative';
     const div = document.createElement('div');
     div.id = colorExtension.divId;
     div.setAttribute(
       'style',
-      'display:block; margin-top:10px;text-align:center;position:sticky;bottom:20px;left:100%;transform:translateX(-10%);z-index:99999;max-width:10%;'
+      'display:none; margin-top:10px;text-align:center;position:sticky;bottom:20px;left:100%;transform:translateX(-10%);z-index:99999;max-width:10%;'
     );
 
     const button = document.createElement('button');
@@ -28,18 +30,28 @@ var colorExtension = {
     button.innerText = 'Change elements';
     button.setAttribute(
       'style',
-      'padding:14px 25px; color:white; background: #242424;margin-bottom: 10px; '
+      'padding:14px 25px; color:white; background: #242424;margin-bottom: 10px;cursor: pointer;'
     );
     const button2 = document.createElement('button');
     button2.id = colorExtension.button2Id;
     button2.innerText = 'Take screenshots';
     button2.setAttribute(
       'style',
-      'padding:14px 25px; color:white; background: #242424;'
+      'padding:14px 25px; color:white; background: #242424;cursor: pointer;'
     );
+
+    const button3 = document.createElement('button');
+    button3.innerHTML = '&times;';
+    button3.id = colorExtension.button3Id;
+    button3.setAttribute(
+      'style',
+      'font-size: 27px;position: absolute;top: 0;right: 0;border: 2px solid #242424;cursor: pointer; text-align: center;padding: 3px 8px; margin:0;color:white; background: #242424;'
+    );
+    button3.onclick = () => colorExtension.toggleBtnVisibility(false);
 
     div.appendChild(button);
     div.appendChild(button2);
+    div.appendChild(button3);
 
     return div;
   },
@@ -52,7 +64,9 @@ var colorExtension = {
         // apply filter
         colorExtension.applyFiltersAndChangeMedia();
         // replace text
-        colorExtension.replaceTexts();
+        // colorExtension.replaceTexts();
+        colorExtension.changeAllTextRecursively(document.body);
+        // colorExtension.changeAnchorTagTexts();
         // colorExtension.changeText(document.body.querySelectorAll('*'));
         // replace bg images
         colorExtension.replaceBgImages();
@@ -70,38 +84,52 @@ var colorExtension = {
   },
 
   takeScreenshots: () => {
-    let p = new Promise((resolve, reject) => {
-      window.scrollTo(0, 0);
-      document.getElementById(colorExtension.divId).style.visibility = 'hidden';
-      resolve();
-    });
-    p.then((e) => {
-      for (let index = 0; index <= browserSize.verticalSections; index++) {
-        setTimeout(() => {
-          window.scrollTo(0, index * window.innerHeight);
-          chrome.runtime.sendMessage(
-            { type: 'TAKE_SCREENSHOT' },
-            (response) => {
-              // console.log(response);
-              screenShotImageData.push(response.img);
-            }
-          );
-        }, 550 * (index + 1));
-      }
-    }).then((e) => {
-      setTimeout(() => {
-        // filter unique blobs
-        screenShotImageData = screenShotImageData.filter((e) => e);
-        // screenShotImageData = [...new Set(screenShotImageData)];
-        console.log(screenShotImageData.length, browserSize.verticalSections);
-        document.getElementById(colorExtension.divId).style.visibility =
-          'visible';
+    scrollPosition = 0;
+    colorExtension.toggleBtnVisibility(false);
+    window.scrollTo(0, 0);
+    setTimeout(() => {
+      colorExtension.takeScreenshots2();
+    }, 10);
+  },
+
+  toggleBtnVisibility: (forceVisibility = true) => {
+    let el = document.getElementById(colorExtension.divId);
+    console.log(window.getComputedStyle(el, null).getPropertyValue('display'));
+
+    if (forceVisibility == false) {
+      el.style.display = 'none';
+      return;
+    }
+
+    if (
+      window.getComputedStyle(el, null).getPropertyValue('display') == 'block'
+    ) {
+      el.style.display = 'none';
+    } else {
+      el.style.display = 'block';
+    }
+  },
+  takeScreenshots2: () => {
+    chrome.runtime.sendMessage({ type: 'TAKE_SCREENSHOT' }, (response) => {
+      // console.log(response);
+      screenShotImageData.push(response.img);
+      scrollPosition += window.innerHeight;
+      window.scrollTo(0, scrollPosition);
+      if (scrollPosition < document.body.scrollHeight) {
+        setTimeout(colorExtension.takeScreenshots2, 500);
+      } else {
+        // console.log(screenShotImageData);
+        colorExtension.toggleBtnVisibility();
         colorExtension.downloadZip();
-      }, (browserSize.verticalSections + 1) * 550 + 1000);
+      }
     });
   },
 
   downloadZip: () => {
+    if (screenShotImageData.length == 0) {
+      return alert('An error occurred while taking screenshots');
+    }
+
     var zip = new JSZip();
     var imgZip = zip.folder('images');
 
@@ -156,17 +184,51 @@ var colorExtension = {
       'style',
       `-moz-filter: grayscale(100%);-webkit-filter: grayscale(100%);filter: gray;filter: grayscale(100%);`
     );
-
     // replace images
     let images = document.getElementsByTagName('img');
+    console.log('total images', images.length);
     for (var i = 0; i < images.length; i++) {
       // console.log(images[i].clientHeight, images[i].clientWidth);
-      images[
-        i
-      ].src = `https://placehold.co/${images[i].clientWidth}x${images[i].clientHeight}`;
       images[i].srcset = '';
       images[i].loading = 'eager';
       images[i].removeAttribute('decoding');
+      images[i].removeAttribute('srcset');
+      images[i].removeAttribute('data-srcset');
+      images[i].removeAttribute('data-src');
+      images[i].setAttribute(
+        'src',
+        `https://placehold.co/${images[i].clientWidth}x${images[i].clientHeight}`
+      );
+    }
+
+    // replace pictures
+    let pictures = document.getElementsByTagName('picture');
+    console.log('total picture', pictures.length);
+    for (var i = 0; i < pictures.length; i++) {
+      var imgElement = pictures[i].querySelector('img');
+
+      let imgUrl = '';
+
+      if (imgElement) {
+        imgElement.setAttribute(
+          'src',
+          `https://placehold.co/${imgElement.clientWidth}x${imgElement.clientHeight}`
+        );
+        imgElement.loading = 'eager';
+        imgElement.removeAttribute('decoding');
+        imgElement.removeAttribute('srcset');
+        imgElement.removeAttribute('data-srcset');
+        imgElement.removeAttribute('data-src');
+        imgUrl = `https://placehold.co/${imgElement.clientWidth}x${imgElement.clientHeight}`;
+      }
+
+      var sourceElements = pictures[i].querySelectorAll('source');
+      sourceElements.forEach(function (source) {
+        source.setAttribute('srcset', imgUrl);
+        source.setAttribute('src', imgUrl);
+        source.setAttribute('data-srcset', imgUrl);
+        source.setAttribute('data-src', imgUrl);
+      });
     }
 
     // replace videos
@@ -230,12 +292,73 @@ var colorExtension = {
     }
   },
 
+  changeAllTextRecursively: (element) => {
+    // Check if the element is not a script or style element
+    if (
+      element.tagName !== 'SCRIPT' &&
+      element.tagName !== 'STYLE' &&
+      element.tagName !== 'BUTTON'
+    ) {
+      // Update the text content of the element
+      element.childNodes.forEach(function (node) {
+        if (node.nodeType === 3) {
+          // Text node
+          node.textContent = colorExtension.replaceWithJibrish(
+            node.textContent.trim()
+          );
+        } else if (node.nodeType === 1) {
+          // Element node
+          // Recursively call the function for child elements
+          colorExtension.changeAllTextRecursively(node);
+        }
+      });
+    }
+  },
+
+  changeAnchorTagTexts: () => {
+    let tags2 = ['a'];
+    let elements2 = [];
+    tags2.forEach((tag) => elements2.push(...document.querySelectorAll(tag)));
+
+    for (let index = 0; index < elements2.length; index++) {
+      if (elements2[index].hasChildNodes()) {
+        let children = Array.from(elements2[index].childNodes);
+        children.forEach((e) => {
+          // console.log(e, e.nodeType, e.nodeValue);
+          if (
+            e.nodeType == 3 &&
+            e.nodeValue != undefined &&
+            e.nodeValue.length > 0
+          ) {
+            // console.log(e.nodeValue.trim());
+            e.nodeValue = colorExtension.replaceWithJibrish(e.nodeValue.trim());
+          }
+        });
+      }
+    }
+  },
+
+  checkEmailOrLink: (inputString) => {
+    const emailPattern = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
+    const linkPattern =
+      /http[s]?:\/\/(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+/;
+
+    if (emailPattern.test(inputString)) {
+      return true;
+    } else if (linkPattern.test(inputString)) {
+      return true;
+    } else {
+      return false;
+    }
+  },
+
   replaceButtons: () => {
     let tags = [
       'button',
       '.btn',
       '[class*=btn]',
       'a[role=button]',
+      'span[role=button]',
       'input[type=button]',
       'input[type=submit]',
       'input[type=reset]',
@@ -247,7 +370,8 @@ var colorExtension = {
     for (let index = 0; index < elements.length; index++) {
       if (
         elements[index].id !== colorExtension.button1Id &&
-        elements[index].id !== colorExtension.button2Id
+        elements[index].id !== colorExtension.button2Id &&
+        elements[index].id !== colorExtension.button3Id
       ) {
         elements[index].innerText = 'Button';
         // if (elements[index].hasChildNodes()) {
@@ -319,7 +443,7 @@ var colorExtension = {
           // console.log(node);
           // get image size
           colorExtension.loadImg(match[1]).then((data) => {
-            node.style.backgroundImage = `url('https://placehold.co/${data.width}x${data.width}')`;
+            node.style.backgroundImage = `url(https://placehold.co/${data.width}x${data.width})`;
           });
           collection.add(match[1]);
         }

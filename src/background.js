@@ -11,9 +11,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       console.log(dataURI);
       setTimeout(function () {
         sendResponse({ img: dataURI });
-      }, 1);
+      }, 10);
     });
-
     return true;
   }
+});
+
+chrome.action.onClicked.addListener((tab) => {
+  chrome.tabs.sendMessage(tab.id, {
+    message: 'TOGGLE_MENU',
+  });
 });
