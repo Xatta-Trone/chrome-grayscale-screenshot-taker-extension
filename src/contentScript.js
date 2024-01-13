@@ -94,7 +94,7 @@ var colorExtension = {
 
   toggleBtnVisibility: (forceVisibility = true) => {
     let el = document.getElementById(colorExtension.divId);
-    console.log(window.getComputedStyle(el, null).getPropertyValue('display'));
+    // console.log(window.getComputedStyle(el, null).getPropertyValue('display'));
 
     if (forceVisibility == false) {
       el.style.display = 'none';
@@ -186,7 +186,7 @@ var colorExtension = {
     );
     // replace images
     let images = document.getElementsByTagName('img');
-    console.log('total images', images.length);
+    // console.log('total images', images.length);
     for (var i = 0; i < images.length; i++) {
       // console.log(images[i].clientHeight, images[i].clientWidth);
       images[i].srcset = '';
@@ -203,7 +203,7 @@ var colorExtension = {
 
     // replace pictures
     let pictures = document.getElementsByTagName('picture');
-    console.log('total picture', pictures.length);
+    // console.log('total picture', pictures.length);
     for (var i = 0; i < pictures.length; i++) {
       var imgElement = pictures[i].querySelector('img');
 
